@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import json
-import altair as alt 
+# Removed plotly.express
 
 # PAGE CONFIG
 icon = Image.open("icon.png")
@@ -159,9 +159,6 @@ def load_data():
     merged = forecasts.merge(gdf_barangays.drop(columns=['Geometry']), on="Barangay", how="left")
     merged_all = merged
     
-    # Ensure Risk_Level is a string type in the main dataframe to prevent issues
-    merged_all['Risk_Level'] = merged_all['Risk_Level'].astype(str)
-    
     return gdf_barangays, merged_all
 
 gdf_barangays, merged_all = load_data()
@@ -193,36 +190,12 @@ filtered_data_line_chart = merged_all[
 filtered_data_line_chart["Forecast_Cases"] = pd.to_numeric(filtered_data_line_chart["Forecast_Cases"], errors="coerce").fillna(0)
 filtered_data_line_chart["Confidence"] = (filtered_data_line_chart["Confidence"] * 100).round(1).astype(str) + "%"
 
-# --- Function to generate date range string ---
-def get_week_date_range(row):
-    try:
-        year = row['Year']
-        week = row['Week']
-        # Monday is day 1, Sunday is day 7
-        start_date = datetime.fromisocalendar(year, week, 1)
-        end_date = datetime.fromisocalendar(year, week, 7)
-        return f"{start_date.strftime('%b %d')} - {end_date.strftime('%b %d, %Y')}"
-    except ValueError:
-        return "Invalid Date Range"
-
-filtered_data_line_chart['Date_Range'] = filtered_data_line_chart.apply(get_week_date_range, axis=1)
-
-# --- FIX: Fill NaN/None values in string columns for Altair validation ---
-# This ensures that any missing Risk_Level or Date_Range values are 'N/A' strings, not None/NaN
-filtered_data_line_chart['Date_Range'] = filtered_data_line_chart['Date_Range'].fillna("N/A")
-# The Risk_Level column must also be ensured to contain only strings
-filtered_data_line_chart['Risk_Level'] = filtered_data_line_chart['Risk_Level'].astype(str).replace('nan', 'N/A')
-# --- END FIX ---
-
-
 # Determine the last available week's data for metrics/ranking
 if not filtered_data_line_chart.empty:
     last_week_data = filtered_data_line_chart.sort_values("Week", ascending=False).iloc[0]
     last_week = last_week_data["Week"]
-    last_date_range_str = last_week_data["Date_Range"] # Use the calculated range
 else:
     last_week = None
-    last_date_range_str = "No Data Available"
 
 
 # DASHBOARD LAYOUT
@@ -231,37 +204,27 @@ col1, col2 = st.columns(2)
 # LEFT COLUMN
 with col1:
     with st.container():
+        # GET THE ACTUAL DATE RANGE for the LAST WEEK
+        if last_week is not None:
+            # Safely calculate start and end dates for the last week
+            try:
+                start_date = datetime.fromisocalendar(st.session_state.selected_year, last_week, 1)  # Monday
+                end_date = datetime.fromisocalendar(st.session_state.selected_year, last_week, 7)    # Sunday
+                date_range_str = f"Latest Forecast: {start_date.strftime('%b %d, %Y')} - {end_date.strftime('%b %d, %Y')}"
+            except ValueError:
+                date_range_str = "Latest Forecast: Invalid Date Range"
+        else:
+            date_range_str = "Latest Forecast: No Data Available"
+
+
         # CHART SECTION
-        title, date = st.columns(2)
-        with title:
-            st.write(f"#### **{st.session_state.selected_barangay} Dengue Forecast**")
-        with date:
-            st.markdown(
-                f"""
-                <div style='display: flex; height: 100%; align-items: flex-end; justify-content: flex-end;'>
-                    <h6 style='margin: 0;'>Latest Forecast: {last_date_range_str}</h6>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+        st.write(f"#### **{st.session_state.selected_barangay} Dengue Forecast**")
         
-        # Line Chart using st.altair_chart
+        # Line Chart using st.line_chart
         if not filtered_data_line_chart.empty:
-            # Prepare Altair chart
-            chart = alt.Chart(filtered_data_line_chart).mark_line().encode(
-                x=alt.X('Week:Q', title='Epidemiological Week'),
-                y=alt.Y('Forecast_Cases:Q', title='Forecasted Cases'),
-                tooltip=[
-                    alt.Tooltip('Week:Q', title='Week No.'),
-                    alt.Tooltip('Date_Range:N', title='Date Range'), 
-                    alt.Tooltip('Forecast_Cases:Q', title='Cases', format='.0f'),
-                    alt.Tooltip('Risk_Level:N', title='Risk Level')
-                ]
-            ).properties(
-                title=None # Title handled by st.write above
-            ).interactive()
-            
-            st.altair_chart(chart, use_container_width=True) # Replaced st.line_chart
+            # Prepare data for st.line_chart (requires index or column for X-axis)
+            chart_data = filtered_data_line_chart[['Week', 'Forecast_Cases']].set_index('Week')
+            st.line_chart(chart_data, use_container_width=True, height=450)
         else:
             st.info(f"No forecast data available for {st.session_state.selected_barangay} in {st.session_state.selected_year} using the {st.session_state.selected_model} model.")
             st.markdown(f'<div style="height: 450px;"></div>', unsafe_allow_html=True) # Maintain height
@@ -315,6 +278,7 @@ with col2:
         if not filtered_data_current_point.empty:
             current_case_data = filtered_data_current_point.iloc[0]
             
+            # --- FIX APPLIED HERE ---
             # Check if the single value is NaN before trying to convert to int
             forecast_value = pd.to_numeric(current_case_data['Forecast_Cases'], errors="coerce")
             
@@ -322,12 +286,11 @@ with col2:
                 current_cases = 0
             else:
                 current_cases = int(forecast_value)
+            # --- END FIX ---
             
-            # Confidence calculation
+            # Confidence was already formatted as string in filtered_data_line_chart but here we use merged_all
             current_confidence_raw = current_case_data['Confidence']
             current_confidence = (current_confidence_raw * 100).round(1).astype(str) + "%"
-            
-            # Use the Risk_Level directly (now guaranteed to be a string or 'nan' from load_data/fix)
             current_risk = current_case_data['Risk_Level']
         else:
             current_cases = 0
@@ -377,9 +340,7 @@ with col2:
             "Low": "#E9F3F2",
             "Moderate": "#F3B705",
             "High": "#F17404",
-            "Critical": "#D9042C",
-            "nan": "#E0E0E0", # Handle case where Risk_Level is 'nan' string
-            "N/A": "#E0E0E0" # Handle case where Risk_Level is 'N/A' string
+            "Critical": "#D9042C"
         }
         
         table_df = filtered_data_ranking[['Barangay', 'Forecast_Cases', 'Confidence', 'Risk_Level']].copy()
@@ -389,10 +350,6 @@ with col2:
         # Sort data for Top 10
         risk_order = ["Low", "Moderate", "High", "Critical"]
         risk_order_map = {level: i for i, level in enumerate(risk_order)}
-        # Set 'nan' or 'N/A' to a low priority for sorting
-        risk_order_map['nan'] = -1 
-        risk_order_map['N/A'] = -1 
-        
         table_df["Risk_Sort"] = table_df["Risk Level"].map(risk_order_map)
         
         # Sort by Risk Level (descending), then by Cases (descending)
@@ -407,9 +364,10 @@ with col2:
         table_df_top10 = table_df.head(10)
 
         def color_forecast(val):
-            # The value 'val' here is the cell content, which is guaranteed to be a string
+            if pd.isna(val):
+                return 'background-color: #E9F3F2; color: black'
             color = risk_colors.get(val, "#E9F3F2")
-            if color in ["#E9F3F2", "#F3B705", "#E0E0E0"]:
+            if color == "#E9F3F2" or color == "#F3B705":
                 text_color = "black"
             else:
                 text_color = "white"
