@@ -220,7 +220,7 @@ with col1:
         # CHART SECTION
         title, date = st.columns(2)
         with title:
-            st.write(f"#### **{st.session_state.selected_barangay} Dengue Forecast Time Series**")
+            st.write(f"#### **{st.session_state.selected_barangay} Dengue Forecast**")
         with date:
             st.markdown(
                 f"""
@@ -434,3 +434,4 @@ with button_container:
     
 button_css = float_css_helper(width="3rem", height="3rem", right="0.8rem", top="0.6rem", transition=0)
 button_container.float(button_css)
+
