@@ -8,12 +8,9 @@ from shapely import wkt
 
 from datetime import datetime, timedelta
 
-# import folium # REMOVED: Not needed for line graph
-# import leafmap.foliumap as leafmap # REMOVED: Not needed for line graph
-# from branca.element import Template, MacroElement, Element # REMOVED: Not needed for line graph
 import numpy as np
 import json
-import plotly.express as px # ADDED: For line graph
+# Removed plotly.express
 
 # PAGE CONFIG
 icon = Image.open("icon.png")
@@ -159,8 +156,8 @@ def load_data():
 
     forecasts = pd.read_csv("all_models_forecasts.csv")
     forecasts["Date"] = pd.to_datetime(forecasts["Date"])
-    merged = forecasts.merge(gdf_barangays.drop(columns=['Geometry']), on="Barangay", how="left") # Dropping geometry for merge
-    merged_all = merged # No longer a GeoDataFrame, just a DataFrame
+    merged = forecasts.merge(gdf_barangays.drop(columns=['Geometry']), on="Barangay", how="left")
+    merged_all = merged
     
     return gdf_barangays, merged_all
 
@@ -180,27 +177,25 @@ default_barangay = barangay_list[0] if barangay_list else ""
 
 st.session_state.setdefault("selected_model", default_model)
 st.session_state.setdefault("selected_year", default_year)
-st.session_state.setdefault("selected_barangay", default_barangay) # ADDED: New session state for barangay
+st.session_state.setdefault("selected_barangay", default_barangay)
 
-year_weeks = sorted(merged_all[merged_all["Year"] == st.session_state.selected_year]["Week"].unique())
-if "selected_week" not in st.session_state:
-    st.session_state.selected_week = min(year_weeks) if year_weeks else 1
-
-# FILTER DATA
-# UPDATED: Filtered data now only contains one barangay for a given year/model
-filtered_data_all_weeks = merged_all[
+# Filter for the line chart (all weeks of the selected year/barangay)
+filtered_data_line_chart = merged_all[
     (merged_all["Model"] == st.session_state.selected_model)
     & (merged_all["Year"] == st.session_state.selected_year)
-    & (merged_all["Barangay"] == st.session_state.selected_barangay) # ADDED: Barangay filter
+    & (merged_all["Barangay"] == st.session_state.selected_barangay)
 ].copy()
 
-filtered_data_all_weeks["Forecast_Cases"] = pd.to_numeric(filtered_data_all_weeks["Forecast_Cases"], errors="coerce").fillna(0)
-filtered_data_all_weeks["Confidence"] = (filtered_data_all_weeks["Confidence"] * 100).round(1).astype(str) + "%"
+filtered_data_line_chart["Forecast_Cases"] = pd.to_numeric(filtered_data_line_chart["Forecast_Cases"], errors="coerce").fillna(0)
+filtered_data_line_chart["Confidence"] = (filtered_data_line_chart["Confidence"] * 100).round(1).astype(str) + "%"
 
-# Data for the specific selected week (for metrics/table in col2)
-filtered_data_current_week = filtered_data_all_weeks[
-    (filtered_data_all_weeks["Week"] == st.session_state.selected_week)
-].copy()
+# Determine the last available week's data for metrics/ranking
+if not filtered_data_line_chart.empty:
+    last_week_data = filtered_data_line_chart.sort_values("Week", ascending=False).iloc[0]
+    last_week = last_week_data["Week"]
+else:
+    last_week = None
+
 
 # DASHBOARD LAYOUT
 col1, col2 = st.columns(2)
@@ -208,16 +203,18 @@ col1, col2 = st.columns(2)
 # LEFT COLUMN
 with col1:
     with st.container():
-        # GET THE ACTUAL DATE RANGE
-        # UPDATED: Date range now reflects the full selected year for the chart, or just the current week for the title
-        start_date = datetime.fromisocalendar(st.session_state.selected_year, st.session_state.selected_week, 1)  # Monday
-        end_date = datetime.fromisocalendar(st.session_state.selected_year, st.session_state.selected_week, 7)    # Sunday
-        date_range_str = f"Current Week: {start_date.strftime('%b %d, %Y')} - {end_date.strftime('%b %d, %Y')}"
+        # GET THE ACTUAL DATE RANGE for the LAST WEEK
+        if last_week is not None:
+            start_date = datetime.fromisocalendar(st.session_state.selected_year, last_week, 1)  # Monday
+            end_date = datetime.fromisocalendar(st.session_state.selected_year, last_week, 7)    # Sunday
+            date_range_str = f"Last Forecast Week: {start_date.strftime('%b %d, %Y')} - {end_date.strftime('%b %d, %Y')}"
+        else:
+            date_range_str = "No Data Available"
+
 
         # CHART SECTION
         title, date = st.columns(2)
         with title:
-            # UPDATED: Title to reflect time series
             st.write(f"#### **{st.session_state.selected_barangay} Dengue Forecast Time Series**")
         with date:
             st.markdown(
@@ -229,35 +226,17 @@ with col1:
                 unsafe_allow_html=True
             )
         
-        # Line Chart using Plotly
-        if not filtered_data_all_weeks.empty:
-            fig = px.line(
-                filtered_data_all_weeks,
-                x='Week',
-                y='Forecast_Cases',
-                title=f'Weekly Forecast Cases for {st.session_state.selected_barangay} ({st.session_state.selected_year})',
-                labels={'Forecast_Cases': 'Forecast Cases', 'Week': 'ISO Week Number'},
-                markers=True,
-                height=450
-            )
-            
-            # Highlight the currently selected week
-            fig.add_vline(
-                x=st.session_state.selected_week, 
-                line_width=2, 
-                line_dash="dash", 
-                line_color="red", 
-                annotation_text=f"Selected Week {st.session_state.selected_week}",
-                annotation_position="bottom right"
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
+        # Line Chart using st.line_chart
+        if not filtered_data_line_chart.empty:
+            # Prepare data for st.line_chart (requires index or column for X-axis)
+            chart_data = filtered_data_line_chart[['Week', 'Forecast_Cases']].set_index('Week')
+            st.line_chart(chart_data, use_container_width=True, height=450)
         else:
             st.info(f"No forecast data available for {st.session_state.selected_barangay} in {st.session_state.selected_year} using the {st.session_state.selected_model} model.")
             st.markdown(f'<div style="height: 450px;"></div>', unsafe_allow_html=True) # Maintain height
 
         # FILTERS CONTROLS
-        filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 2]) # UPDATED: Added a third column for Barangay
+        filter_col1, filter_col2 = st.columns(2)
         
         with filter_col1:
             selected_year = st.selectbox(
@@ -267,39 +246,24 @@ with col1:
             )
 
         with filter_col2:
-            selected_barangay = st.selectbox( # ADDED: Barangay selection
+            selected_barangay = st.selectbox(
                 "Select Barangay",
                 barangay_list,
                 index=barangay_list.index(st.session_state.selected_barangay)
             )
         
-        with filter_col3:
-            available_weeks = sorted(merged_all[merged_all["Year"] == selected_year]["Week"].unique())
-            
-            default_week = st.session_state.selected_week
-            if default_week not in available_weeks:
-                default_week = available_weeks[0] if available_weeks else 1
-            
-            selected_week = st.select_slider(
-                "Select Week",
-                available_weeks,
-                value=default_week
-            )
-        
         # UPDATE SESSION STATE ON CHANGE
-        if selected_year != st.session_state.selected_year or selected_week != st.session_state.selected_week or selected_barangay != st.session_state.selected_barangay:
+        if selected_year != st.session_state.selected_year or selected_barangay != st.session_state.selected_barangay:
             st.session_state.selected_year = selected_year
-            st.session_state.selected_week = selected_week
-            st.session_state.selected_barangay = selected_barangay # UPDATED: Update session state for barangay
+            st.session_state.selected_barangay = selected_barangay
             st.rerun()
 
         # MAP DESCRIPTION
         map_description = st.container(border=True)
-        # UPDATED: Description reflects the line graph
         map_description.write("""
         The chart visualizes the **forecasted dengue cases** over the selected year for the **selected barangay** using the chosen prediction model.
         This time series analysis allows for the detection of temporal patterns, such as seasonal peaks or unusual case surges for a specific location.
-        The red dashed line marks the currently selected week, which determines the summary metrics and risk level displayed in the right column.
+        The summary metrics and risk ranking in the right column are based on the **last available forecast week** shown in the chart.
         """)
             
 # RIGHT COLUMN
@@ -307,63 +271,82 @@ with col2:
     # METRICS SECTION
     st.write("#### **Summary Metrics**")
     
-    # UPDATED: Metrics now use the filtered data for the current week AND barangay
-    if not filtered_data_current_week.empty:
-        current_case_data = filtered_data_current_week.iloc[0]
-        current_cases = current_case_data['Forecast_Cases']
-        current_confidence = current_case_data['Confidence']
-        current_risk = current_case_data['Risk_Level']
+    # Filter data for the current barangay and the last available week for metrics
+    if last_week is not None:
+        filtered_data_current_point = merged_all[
+            (merged_all["Model"] == st.session_state.selected_model)
+            & (merged_all["Year"] == st.session_state.selected_year)
+            & (merged_all["Barangay"] == st.session_state.selected_barangay)
+            & (merged_all["Week"] == last_week)
+        ].copy()
+        
+        if not filtered_data_current_point.empty:
+            current_case_data = filtered_data_current_point.iloc[0]
+            current_cases = pd.to_numeric(current_case_data['Forecast_Cases'], errors="coerce").fillna(0).astype(int)
+            current_confidence = (current_case_data['Confidence'] * 100).round(1).astype(str) + "%"
+            current_risk = current_case_data['Risk_Level']
+        else:
+            current_cases = 0
+            current_confidence = "N/A"
+            current_risk = "N/A"
     else:
-        # Fallback if no data for the specific week/barangay
         current_cases = 0
         current_confidence = "N/A"
         current_risk = "N/A"
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Forecasted Cases (This Week)", f"{current_cases}")
-    m2.metric("Confidence Level", current_confidence)
-    m3.metric("Risk Level", current_risk) # UPDATED: Changed the metric to "Risk Level"
+    m1.metric("Forecasted Cases (Latest)", f"{current_cases}")
+    m2.metric("Confidence Level (Latest)", current_confidence)
+    m3.metric("Risk Level (Latest)", current_risk)
     
     # TABLE SECTION
-    st.write("#### **Risk Ranking by Barangay**")
+    st.write("#### **Risk Ranking by Barangay (Latest Week)**")
     
-    # Table logic now uses all barangays for the selected year/week
-    # Note: I need to re-filter the data for ALL BARANGAYS for the selected week to show a *ranking*
-    filtered_data_ranking = merged_all[
-        (merged_all["Model"] == st.session_state.selected_model)
-        & (merged_all["Year"] == st.session_state.selected_year)
-        & (merged_all["Week"] == st.session_state.selected_week)
-    ].copy()
-    filtered_data_ranking["Forecast_Cases"] = pd.to_numeric(filtered_data_ranking["Forecast_Cases"], errors="coerce").fillna(0)
-    filtered_data_ranking["Confidence"] = (filtered_data_ranking["Confidence"] * 100).round(1).astype(str) + "%"
+    # Table logic uses all barangays for the LAST available week of the selected year
+    if last_week is not None:
+        filtered_data_ranking = merged_all[
+            (merged_all["Model"] == st.session_state.selected_model)
+            & (merged_all["Year"] == st.session_state.selected_year)
+            & (merged_all["Week"] == last_week)
+        ].copy()
+    else:
+        filtered_data_ranking = pd.DataFrame()
+        
+    if not filtered_data_ranking.empty:
+        filtered_data_ranking["Forecast_Cases"] = pd.to_numeric(filtered_data_ranking["Forecast_Cases"], errors="coerce").fillna(0)
+        filtered_data_ranking["Confidence"] = (filtered_data_ranking["Confidence"] * 100).round(1).astype(str) + "%"
 
-    risk_colors = { # Re-defined here since it was removed with map code
-        "Low": "#E9F3F2",
-        "Moderate": "#F3B705",
-        "High": "#F17404",
-        "Critical": "#D9042C"
-    }
-    
-    table_df = filtered_data_ranking[['Barangay', 'Forecast_Cases', 'Confidence', 'Risk_Level']].copy()
-    table_df = table_df.rename(columns={"Forecast_Cases": "Forecast Cases", "Confidence": "Confidence", "Risk_Level": "Risk Level"})
-    table_df["Forecast Cases"] = table_df["Forecast Cases"].astype(str)
-    
-    risk_order = ["Low", "Moderate", "High", "Critical"]
-    table_df["Risk Level"] = pd.Categorical(table_df["Risk Level"], categories=risk_order, ordered=True)
-    table_df = table_df.sort_values(by=['Risk Level', 'Forecast Cases'], ascending=[False, False]).reset_index(drop=True)
+        risk_colors = { 
+            "Low": "#E9F3F2",
+            "Moderate": "#F3B705",
+            "High": "#F17404",
+            "Critical": "#D9042C"
+        }
+        
+        table_df = filtered_data_ranking[['Barangay', 'Forecast_Cases', 'Confidence', 'Risk_Level']].copy()
+        table_df = table_df.rename(columns={"Forecast_Cases": "Forecast Cases", "Confidence": "Confidence", "Risk_Level": "Risk Level"})
+        table_df["Forecast Cases"] = table_df["Forecast Cases"].astype(str)
+        
+        risk_order = ["Low", "Moderate", "High", "Critical"]
+        table_df["Risk Level"] = pd.Categorical(table_df["Risk Level"], categories=risk_order, ordered=True)
+        table_df = table_df.sort_values(by=['Risk Level', 'Forecast Cases'], ascending=[False, False]).reset_index(drop=True)
 
-    def color_forecast(val):
-        if pd.isna(val):
-            return 'background-color: #E9F3F2; color: black'
-        color = risk_colors.get(val, "#E9F3F2")
-        if color == "#E9F3F2" or color == "#F3B705":
-            text_color = "black"
-        else:
-            text_color = "white"
-        return f'background-color: {color}; color: {text_color}; font-weight: bold'
-    
-    styled_table = table_df.style.applymap(color_forecast, subset=['Risk Level'])
-    st.dataframe(styled_table, width='stretch', height=380)
+        def color_forecast(val):
+            if pd.isna(val):
+                return 'background-color: #E9F3F2; color: black'
+            color = risk_colors.get(val, "#E9F3F2")
+            if color == "#E9F3F2" or color == "#F3B705":
+                text_color = "black"
+            else:
+                text_color = "white"
+            return f'background-color: {color}; color: {text_color}; font-weight: bold'
+        
+        styled_table = table_df.style.applymap(color_forecast, subset=['Risk Level'])
+        st.dataframe(styled_table, width='stretch', height=380)
+    else:
+        st.info("No ranking data available for the latest week.")
+        st.markdown(f'<div style="height: 380px;"></div>', unsafe_allow_html=True) # Maintain height
+
 
     # RISK LEVEL DESCRIPTION
     risk_description = st.container(border=True)
