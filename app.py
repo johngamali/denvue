@@ -266,6 +266,7 @@ with col1:
         The summary metrics and risk ranking in the right column are based on the **last available forecast week** shown in the chart.
         """)
             
+
 # RIGHT COLUMN
 with col2:
     # METRICS SECTION
@@ -294,13 +295,26 @@ with col2:
         current_confidence = "N/A"
         current_risk = "N/A"
 
+    # Total Forecasted Cases across ALL barangays for the latest week
+    total_cases_latest_week = 0
+    if last_week is not None:
+        total_cases_df = merged_all[
+            (merged_all["Model"] == st.session_state.selected_model)
+            & (merged_all["Year"] == st.session_state.selected_year)
+            & (merged_all["Week"] == last_week)
+        ].copy()
+        total_cases_latest_week = pd.to_numeric(total_cases_df['Forecast_Cases'], errors="coerce").fillna(0).sum().astype(int)
+
     m1, m2, m3 = st.columns(3)
-    m1.metric("Forecasted Cases (Latest)", f"{current_cases}")
-    m2.metric("Confidence Level (Latest)", current_confidence)
-    m3.metric("Risk Level (Latest)", current_risk)
+    # Metric 1: Total cases across all barangays for the latest week
+    m1.metric("Total Cases (Latest Week)", f"{total_cases_latest_week}")
+    # Metric 2: Selected Barangay's cases for the latest week
+    m2.metric(f"{st.session_state.selected_barangay} Cases", f"{current_cases}")
+    # Metric 3: Selected Barangay's Risk Level for the latest week
+    m3.metric(f"{st.session_state.selected_barangay} Risk", current_risk)
     
     # TABLE SECTION
-    st.write("#### **Risk Ranking by Barangay (Latest Week)**")
+    st.write("#### **Top 10 Risk Ranking by Barangay (Latest Week)**")
     
     # Table logic uses all barangays for the LAST available week of the selected year
     if last_week is not None:
@@ -324,12 +338,24 @@ with col2:
         }
         
         table_df = filtered_data_ranking[['Barangay', 'Forecast_Cases', 'Confidence', 'Risk_Level']].copy()
-        table_df = table_df.rename(columns={"Forecast_Cases": "Forecast Cases", "Confidence": "Confidence", "Risk_Level": "Risk Level"})
-        table_df["Forecast Cases"] = table_df["Forecast Cases"].astype(str)
+        table_df = table_df.rename(columns={"Forecast_Cases": "Cases", "Confidence": "Confidence", "Risk_Level": "Risk Level"})
+        table_df["Cases"] = table_df["Cases"].astype(str)
         
+        # Sort data for Top 10
         risk_order = ["Low", "Moderate", "High", "Critical"]
-        table_df["Risk Level"] = pd.Categorical(table_df["Risk Level"], categories=risk_order, ordered=True)
-        table_df = table_df.sort_values(by=['Risk Level', 'Forecast Cases'], ascending=[False, False]).reset_index(drop=True)
+        risk_order_map = {level: i for i, level in enumerate(risk_order)}
+        table_df["Risk_Sort"] = table_df["Risk Level"].map(risk_order_map)
+        
+        # Sort by Risk Level (descending), then by Cases (descending)
+        table_df = table_df.sort_values(
+            by=['Risk_Sort', 'Cases'], 
+            ascending=[False, False]
+        ).reset_index(drop=True)
+        
+        table_df = table_df.drop(columns=['Risk_Sort'])
+        
+        # Limit to Top 10
+        table_df_top10 = table_df.head(10)
 
         def color_forecast(val):
             if pd.isna(val):
@@ -341,8 +367,11 @@ with col2:
                 text_color = "white"
             return f'background-color: {color}; color: {text_color}; font-weight: bold'
         
-        styled_table = table_df.style.applymap(color_forecast, subset=['Risk Level'])
-        st.dataframe(styled_table, width='stretch', height=380)
+        # Apply style to the Top 10 table
+        styled_table = table_df_top10.style.applymap(color_forecast, subset=['Risk Level'])
+        
+        # Adjust height for 10 rows + header
+        st.dataframe(styled_table, width='stretch', height=380) 
     else:
         st.info("No ranking data available for the latest week.")
         st.markdown(f'<div style="height: 380px;"></div>', unsafe_allow_html=True) # Maintain height
