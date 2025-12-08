@@ -8,11 +8,12 @@ from shapely import wkt
 
 from datetime import datetime, timedelta
 
-import folium
-import leafmap.foliumap as leafmap
-from branca.element import Template, MacroElement, Element
+# import folium # REMOVED: Not needed for line graph
+# import leafmap.foliumap as leafmap # REMOVED: Not needed for line graph
+# from branca.element import Template, MacroElement, Element # REMOVED: Not needed for line graph
 import numpy as np
 import json
+import plotly.express as px # ADDED: For line graph
 
 # PAGE CONFIG
 icon = Image.open("icon.png")
@@ -109,7 +110,7 @@ bottom_align = """
 """
 st.markdown(bottom_align, unsafe_allow_html=True)
 
-# [LEAFMAP] ADD MAP BORDER
+# [LEAFMAP] ADD MAP BORDER - CSS still included, but map is removed
 map_border_style = """
 <style>
 iframe {
@@ -158,8 +159,8 @@ def load_data():
 
     forecasts = pd.read_csv("all_models_forecasts.csv")
     forecasts["Date"] = pd.to_datetime(forecasts["Date"])
-    merged = forecasts.merge(gdf_barangays, on="Barangay", how="left")
-    merged_all = gpd.GeoDataFrame(merged, geometry="Geometry", crs="EPSG:4326")
+    merged = forecasts.merge(gdf_barangays.drop(columns=['Geometry']), on="Barangay", how="left") # Dropping geometry for merge
+    merged_all = merged # No longer a GeoDataFrame, just a DataFrame
     
     return gdf_barangays, merged_all
 
@@ -174,23 +175,32 @@ merged_all["Week"] = merged_all["Date"].dt.isocalendar().week.astype(int)
 model_list = merged_all["Model"].unique()
 default_model = "random_forest" if "random_forest" in model_list else model_list[0]
 default_year = 2025 if 2025 in available_years else available_years[-1]
+barangay_list = sorted(merged_all["Barangay"].unique())
+default_barangay = barangay_list[0] if barangay_list else ""
 
 st.session_state.setdefault("selected_model", default_model)
 st.session_state.setdefault("selected_year", default_year)
+st.session_state.setdefault("selected_barangay", default_barangay) # ADDED: New session state for barangay
 
 year_weeks = sorted(merged_all[merged_all["Year"] == st.session_state.selected_year]["Week"].unique())
 if "selected_week" not in st.session_state:
     st.session_state.selected_week = min(year_weeks) if year_weeks else 1
 
 # FILTER DATA
-filtered_data = merged_all[
+# UPDATED: Filtered data now only contains one barangay for a given year/model
+filtered_data_all_weeks = merged_all[
     (merged_all["Model"] == st.session_state.selected_model)
     & (merged_all["Year"] == st.session_state.selected_year)
-    & (merged_all["Week"] == st.session_state.selected_week)
+    & (merged_all["Barangay"] == st.session_state.selected_barangay) # ADDED: Barangay filter
 ].copy()
 
-filtered_data["Forecast_Cases"] = pd.to_numeric(filtered_data["Forecast_Cases"], errors="coerce").fillna(0)
-filtered_data["Confidence"] = (filtered_data["Confidence"] * 100).round(1).astype(str) + "%"
+filtered_data_all_weeks["Forecast_Cases"] = pd.to_numeric(filtered_data_all_weeks["Forecast_Cases"], errors="coerce").fillna(0)
+filtered_data_all_weeks["Confidence"] = (filtered_data_all_weeks["Confidence"] * 100).round(1).astype(str) + "%"
+
+# Data for the specific selected week (for metrics/table in col2)
+filtered_data_current_week = filtered_data_all_weeks[
+    (filtered_data_all_weeks["Week"] == st.session_state.selected_week)
+].copy()
 
 # DASHBOARD LAYOUT
 col1, col2 = st.columns(2)
@@ -199,14 +209,16 @@ col1, col2 = st.columns(2)
 with col1:
     with st.container():
         # GET THE ACTUAL DATE RANGE
+        # UPDATED: Date range now reflects the full selected year for the chart, or just the current week for the title
         start_date = datetime.fromisocalendar(st.session_state.selected_year, st.session_state.selected_week, 1)  # Monday
         end_date = datetime.fromisocalendar(st.session_state.selected_year, st.session_state.selected_week, 7)    # Sunday
-        date_range_str = f"{start_date.strftime('%b %d, %Y')} - {end_date.strftime('%b %d, %Y')}"
+        date_range_str = f"Current Week: {start_date.strftime('%b %d, %Y')} - {end_date.strftime('%b %d, %Y')}"
 
-        # MAP SECTION
+        # CHART SECTION
         title, date = st.columns(2)
         with title:
-            st.write(f"#### **Dengue Risk Distribution Map**")
+            # UPDATED: Title to reflect time series
+            st.write(f"#### **{st.session_state.selected_barangay} Dengue Forecast Time Series**")
         with date:
             st.markdown(
                 f"""
@@ -216,115 +228,36 @@ with col1:
                 """,
                 unsafe_allow_html=True
             )
-        bounds = filtered_data.total_bounds
-        buffer = 0.05
-        map = leafmap.Map(
-            location=[8.48, 124.65],
-            zoom_start=10,
-            min_zoom=10,
-            max_zoom=18,
-            tiles="CartoDB.PositronNoLabels",
-            max_bounds=True,
-            min_lat=bounds[1]-buffer,
-            max_lat=bounds[3]+buffer,
-            min_lon=bounds[0]-buffer,
-            max_lon=bounds[2]+buffer,
-            attribution_control=False,
-            draw_control=False,
-            measure_control=False,
-            fullscreen_control=False,
-            locate_control=False,
-            minimap_control=False,
-            scale_control=False,
-            layer_control=False,
-            search_control=False,
-        )
         
-        risk_colors = {
-            "Low": "#E9F3F2",
-            "Moderate": "#F3B705",
-            "High": "#F17404",
-            "Critical": "#D9042C"
-        }
-        
-        def get_color(risk_level):
-            if pd.isna(risk_level):
-                return "#E9F3F2"
-            return risk_colors.get(risk_level, "#E9F3F2")
-        
-        def style_function(feature):
-            risk_level = feature["properties"].get("Risk_Level", None)
-            return {
-                "fillColor": get_color(risk_level),
-                "fillOpacity": 1.0,
-                "color": "#686A6AFF",
-                "weight": 1.0,
-                "opacity": 1.0,
-            }
-        
-        filtered_data["Forecast_Cases_str"] = filtered_data["Forecast_Cases"].apply(lambda x: f"{x}")
-        geojson_data = json.loads(filtered_data[["Geometry", "Barangay", "Forecast_Cases_str", "Confidence", "Risk_Level"]].to_json())
-        
-        # ADD GEOJSON LAYER
-        geojson = folium.GeoJson(
-            data=geojson_data,
-            style_function=style_function,
-            tooltip=folium.GeoJsonTooltip(
-                fields=["Barangay", "Forecast_Cases_str", "Confidence", "Risk_Level"],
-                aliases=["Barangay:", "Forecast Cases:", "Confidence:", "Risk Level:"],
-                style=("font-weight: bold; font-size: 12px;"),
-                sticky=True,
-            ),
-            name="Forecast Cases",
-            highlight_function=lambda x: {'weight': 3, 'color': 'green'},
-            zoom_on_click=True
-        ).add_to(map)
-
-        # ADD BARANGAY NAME LAYER
-        barangay_labels = folium.FeatureGroup(name="Barangay Labels", show=False)
-        gdf_barangays["lon"] = gdf_barangays.geometry.centroid.x
-        gdf_barangays["lat"] = gdf_barangays.geometry.centroid.y
-        
-        for idx, row in gdf_barangays.iterrows():
-            folium.map.Marker(
-                location=[row["lat"], row["lon"]],
-                icon=folium.DivIcon(
-                    html=f'<div style="font-size:6pt;font-weight:bold">{row["Barangay"]}</div>'
-                )
-            ).add_to(barangay_labels)
-        
-        barangay_labels.add_to(map)
-        folium.LayerControl().add_to(map)
-        
-        # CUSTOM LEGEND
-        legend_html = """
-        {% macro html(this, kwargs) %}
-        <div style="
-            position: fixed; 
-            bottom: 10px; left: 10px; width: 120px; 
-            z-index:9999; font-size:14px;
-            background-color: white;
-            border:2px solid #ABABAB;
-            border-radius:8px;
-            padding: 10px;
-        ">
-            <b>Risk Level</b><br>
-            <i style="background:#E9F3F2;width:18px;height:18px;float:left;margin-right:8px;border:1px solid #ccc;"></i>Low<br>
-            <i style="background:#F3B705;width:18px;height:18px;float:left;margin-right:8px;border:1px solid #ccc;"></i>Moderate<br>
-            <i style="background:#F17404;width:18px;height:18px;float:left;margin-right:8px;border:1px solid #ccc;"></i>High<br>
-            <i style="background:#D9042C;width:18px;height:18px;float:left;margin-right:8px;border:1px solid #ccc;"></i>Critical<br>
-        </div>
-        {% endmacro %}
-        """
-        legend_macro = MacroElement()
-        legend_macro._template = Template(legend_html)
-        map.get_root().add_child(legend_macro)
-
-        # SHOW MAP
-        map.to_streamlit(height=450, width=None, add_layer_control=False)
+        # Line Chart using Plotly
+        if not filtered_data_all_weeks.empty:
+            fig = px.line(
+                filtered_data_all_weeks,
+                x='Week',
+                y='Forecast_Cases',
+                title=f'Weekly Forecast Cases for {st.session_state.selected_barangay} ({st.session_state.selected_year})',
+                labels={'Forecast_Cases': 'Forecast Cases', 'Week': 'ISO Week Number'},
+                markers=True,
+                height=450
+            )
+            
+            # Highlight the currently selected week
+            fig.add_vline(
+                x=st.session_state.selected_week, 
+                line_width=2, 
+                line_dash="dash", 
+                line_color="red", 
+                annotation_text=f"Selected Week {st.session_state.selected_week}",
+                annotation_position="bottom right"
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info(f"No forecast data available for {st.session_state.selected_barangay} in {st.session_state.selected_year} using the {st.session_state.selected_model} model.")
+            st.markdown(f'<div style="height: 450px;"></div>', unsafe_allow_html=True) # Maintain height
 
         # FILTERS CONTROLS
-        filter_col1, filter_col2 = st.columns([1, 3])
+        filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 2]) # UPDATED: Added a third column for Barangay
         
         with filter_col1:
             selected_year = st.selectbox(
@@ -332,8 +265,15 @@ with col1:
                 available_years,
                 index=available_years.index(st.session_state.selected_year)
             )
-        
+
         with filter_col2:
+            selected_barangay = st.selectbox( # ADDED: Barangay selection
+                "Select Barangay",
+                barangay_list,
+                index=barangay_list.index(st.session_state.selected_barangay)
+            )
+        
+        with filter_col3:
             available_weeks = sorted(merged_all[merged_all["Year"] == selected_year]["Week"].unique())
             
             default_week = st.session_state.selected_week
@@ -347,40 +287,64 @@ with col1:
             )
         
         # UPDATE SESSION STATE ON CHANGE
-        if selected_year != st.session_state.selected_year or selected_week != st.session_state.selected_week:
+        if selected_year != st.session_state.selected_year or selected_week != st.session_state.selected_week or selected_barangay != st.session_state.selected_barangay:
             st.session_state.selected_year = selected_year
             st.session_state.selected_week = selected_week
+            st.session_state.selected_barangay = selected_barangay # UPDATED: Update session state for barangay
             st.rerun()
 
         # MAP DESCRIPTION
         map_description = st.container(border=True)
+        # UPDATED: Description reflects the line graph
         map_description.write("""
-        The map visualizes barangay-level dengue forecasts across the city, allowing users to identify spatial patterns and emerging hotspots.
-        Each barangay is color-coded based on its forecasted risk level, enabling quick recognition of areas with unusual case surges.
-        This adaptive approach highlights localized dengue trends rather than absolute case counts,
-        making it easier for public health teams to prioritize surveillance and response efforts.
+        The chart visualizes the **forecasted dengue cases** over the selected year for the **selected barangay** using the chosen prediction model.
+        This time series analysis allows for the detection of temporal patterns, such as seasonal peaks or unusual case surges for a specific location.
+        The red dashed line marks the currently selected week, which determines the summary metrics and risk level displayed in the right column.
         """)
             
 # RIGHT COLUMN
 with col2:
     # METRICS SECTION
     st.write("#### **Summary Metrics**")
-    total_cases = filtered_data['Forecast_Cases'].sum()
-
-    risk_order = {"Low": 1, "Moderate": 2, "High": 3, "Critical": 4}
-    filtered_data["Risk_Code"] = filtered_data["Risk_Level"].map(risk_order)
     
-    max_row = filtered_data.loc[filtered_data["Risk_Code"].idxmax()]
-    min_row = filtered_data.loc[filtered_data["Risk_Code"].idxmin()]
+    # UPDATED: Metrics now use the filtered data for the current week AND barangay
+    if not filtered_data_current_week.empty:
+        current_case_data = filtered_data_current_week.iloc[0]
+        current_cases = current_case_data['Forecast_Cases']
+        current_confidence = current_case_data['Confidence']
+        current_risk = current_case_data['Risk_Level']
+    else:
+        # Fallback if no data for the specific week/barangay
+        current_cases = 0
+        current_confidence = "N/A"
+        current_risk = "N/A"
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Total Forecasted Cases", f"{total_cases}")
-    m2.metric("Highest Risk Barangay", max_row['Barangay'])
-    m3.metric("Lowest Risk Barangay", min_row['Barangay'])
-
+    m1.metric("Forecasted Cases (This Week)", f"{current_cases}")
+    m2.metric("Confidence Level", current_confidence)
+    m3.metric("Risk Level", current_risk) # UPDATED: Changed the metric to "Risk Level"
+    
     # TABLE SECTION
     st.write("#### **Risk Ranking by Barangay**")
-    table_df = filtered_data[['Barangay', 'Forecast_Cases', 'Confidence', 'Risk_Level']].copy()
+    
+    # Table logic now uses all barangays for the selected year/week
+    # Note: I need to re-filter the data for ALL BARANGAYS for the selected week to show a *ranking*
+    filtered_data_ranking = merged_all[
+        (merged_all["Model"] == st.session_state.selected_model)
+        & (merged_all["Year"] == st.session_state.selected_year)
+        & (merged_all["Week"] == st.session_state.selected_week)
+    ].copy()
+    filtered_data_ranking["Forecast_Cases"] = pd.to_numeric(filtered_data_ranking["Forecast_Cases"], errors="coerce").fillna(0)
+    filtered_data_ranking["Confidence"] = (filtered_data_ranking["Confidence"] * 100).round(1).astype(str) + "%"
+
+    risk_colors = { # Re-defined here since it was removed with map code
+        "Low": "#E9F3F2",
+        "Moderate": "#F3B705",
+        "High": "#F17404",
+        "Critical": "#D9042C"
+    }
+    
+    table_df = filtered_data_ranking[['Barangay', 'Forecast_Cases', 'Confidence', 'Risk_Level']].copy()
     table_df = table_df.rename(columns={"Forecast_Cases": "Forecast Cases", "Confidence": "Confidence", "Risk_Level": "Risk Level"})
     table_df["Forecast Cases"] = table_df["Forecast Cases"].astype(str)
     
