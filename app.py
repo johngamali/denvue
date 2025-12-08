@@ -415,7 +415,7 @@ with col2:
 def open_model_options():
     model_name_map = {
         "linear_regression": "Linear Regression",
-        "varmax": "VARMAX",
+        "lstm": "LSTM",
         "random_forest": "Random Forest (Recommended)",
         "xgboost": "XGBoost",
     }
