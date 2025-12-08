@@ -186,6 +186,7 @@ filtered_data_line_chart = merged_all[
     & (merged_all["Barangay"] == st.session_state.selected_barangay)
 ].copy()
 
+# Ensure Forecast_Cases is numeric at the DataFrame level for the chart
 filtered_data_line_chart["Forecast_Cases"] = pd.to_numeric(filtered_data_line_chart["Forecast_Cases"], errors="coerce").fillna(0)
 filtered_data_line_chart["Confidence"] = (filtered_data_line_chart["Confidence"] * 100).round(1).astype(str) + "%"
 
@@ -205,11 +206,15 @@ with col1:
     with st.container():
         # GET THE ACTUAL DATE RANGE for the LAST WEEK
         if last_week is not None:
-            start_date = datetime.fromisocalendar(st.session_state.selected_year, last_week, 1)  # Monday
-            end_date = datetime.fromisocalendar(st.session_state.selected_year, last_week, 7)    # Sunday
-            date_range_str = f"Last Forecast Week: {start_date.strftime('%b %d, %Y')} - {end_date.strftime('%b %d, %Y')}"
+            # Safely calculate start and end dates for the last week
+            try:
+                start_date = datetime.fromisocalendar(st.session_state.selected_year, last_week, 1)  # Monday
+                end_date = datetime.fromisocalendar(st.session_state.selected_year, last_week, 7)    # Sunday
+                date_range_str = f"Latest Forecast: {start_date.strftime('%b %d, %Y')} - {end_date.strftime('%b %d, %Y')}"
+            except ValueError:
+                date_range_str = "Latest Forecast: Invalid Date Range"
         else:
-            date_range_str = "No Data Available"
+            date_range_str = "Latest Forecast: No Data Available"
 
 
         # CHART SECTION
@@ -283,8 +288,20 @@ with col2:
         
         if not filtered_data_current_point.empty:
             current_case_data = filtered_data_current_point.iloc[0]
-            current_cases = pd.to_numeric(current_case_data['Forecast_Cases'], errors="coerce").fillna(0).astype(int)
-            current_confidence = (current_case_data['Confidence'] * 100).round(1).astype(str) + "%"
+            
+            # --- FIX APPLIED HERE ---
+            # Check if the single value is NaN before trying to convert to int
+            forecast_value = pd.to_numeric(current_case_data['Forecast_Cases'], errors="coerce")
+            
+            if pd.isna(forecast_value):
+                current_cases = 0
+            else:
+                current_cases = int(forecast_value)
+            # --- END FIX ---
+            
+            # Confidence was already formatted as string in filtered_data_line_chart but here we use merged_all
+            current_confidence_raw = current_case_data['Confidence']
+            current_confidence = (current_confidence_raw * 100).round(1).astype(str) + "%"
             current_risk = current_case_data['Risk_Level']
         else:
             current_cases = 0
