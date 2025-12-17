@@ -48,8 +48,6 @@ The dashboard visualizes processed outputs derived from:
 - Population and spatial boundary datasets
 - Machine learning model predictions and risk classifications
 
->  **Note:** All data used in this dashboard are for **academic and research purposes only**.
-
 ---
 
 ##  Tech Stack
@@ -65,7 +63,7 @@ The dashboard visualizes processed outputs derived from:
 
 This dashboard is part of the undergraduate capstone project:
 
-> *DENVUE: A MACHINE LEARNING-BASED DENGUE CASE ESTIMATION AND DECISION-SUPPORT FRAMEWORK FOR CAGAYAN DE ORO CITY AND ENVIRONMENTAL*
+## *DENVUE: A MACHINE LEARNING-BASED DENGUE CASE ESTIMATION AND DECISION-SUPPORT FRAMEWORK FOR CAGAYAN DE ORO CITY AND ENVIRONMENTAL*
 
 Developed in partial fulfillment of the requirements for the **Bachelor of Science in Data Science** program at **USTP**.
 
