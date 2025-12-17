@@ -1,5 +1,3 @@
-DENVUE: A MACHINE LEARNING-BASED DENGUE CASE ESTIMATION AND DECISION-SUPPORT FRAMEWORK FOR CAGAYAN DE ORO CITY AND ENVIRONMENTAL
-
 # DENVUE Dashboard  
 **Dengue Visualization & Environmental Risk Analytics**
 
@@ -13,10 +11,10 @@ This dashboard serves as the visualization and analytics layer of the **DENVUE C
 
 Dengue remains a persistent public health challenge, particularly in tropical urban environments. While traditional surveillance systems rely on static reports, **DENVUE bridges the gap between raw data and operational insights** by providing:
 
-- 📊 **Barangay-level dengue analytics**
-- 🗺️ **Interactive spatial risk mapping**
-- 🌦️ **Environmental factor integration**
-- 📈 **Machine learning–driven risk interpretation**
+- Barangay-level dengue analytics**
+- Interactive spatial risk mapping**
+- Environmental factor integration**
+- Machine learning–driven risk interpretation**
 
 The dashboard is designed to be **intuitive, responsive, and data-driven**, allowing users to explore dengue trends over space and time with minimal technical overhead.
 
@@ -24,19 +22,19 @@ The dashboard is designed to be **intuitive, responsive, and data-driven**, allo
 
 ## Key Features
 
-- ** Interactive Map Visualization**  
+- Interactive Map Visualization  
   View dengue risk distribution across barangays using spatial overlays and dynamic legends.
 
-- ** Data Analytics Panels**  
+- Data Analytics Panels
   Explore dengue case patterns, incidence trends, and environmental correlations.
 
-- ** Environmental Context**  
+- Environmental Context 
   Integrated climate variables such as temperature, rainfall, and humidity to support risk interpretation.
 
-- ** Machine Learning Outputs**  
+- Machine Learning Outputs 
   Displays outputs from regression and classification models used in the study for dengue risk assessment.
 
-- ** Modular Dashboard Design**  
+- Modular Dashboard Design 
   Built for extensibility — new data sources, models, or visual layers can be added with ease.
 
 ---
@@ -56,10 +54,10 @@ The dashboard visualizes processed outputs derived from:
 
 ##  Tech Stack
 
-- **Frontend:** Web-based dashboard framework  
-- **Backend / Analytics:** Python-based data processing and machine learning  
-- **Visualization:** Interactive charts and geospatial mapping  
-- **Models:** Regression and machine learning models for dengue risk assessment  
+- Frontend: Web-based dashboard framework  
+- Backend / Analytics: Python-based data processing and machine learning  
+- Visualization: Interactive charts and geospatial mapping  
+- Models: Regression and machine learning models for dengue risk assessment  
 
 ---
 
@@ -67,7 +65,7 @@ The dashboard visualizes processed outputs derived from:
 
 This dashboard is part of the undergraduate capstone project:
 
-> **DENVUE: An Environmental Risk Mapping Framework for Dengue in Cagayan de Oro City**
+> *DENVUE: A MACHINE LEARNING-BASED DENGUE CASE ESTIMATION AND DECISION-SUPPORT FRAMEWORK FOR CAGAYAN DE ORO CITY AND ENVIRONMENTAL*
 
 Developed in partial fulfillment of the requirements for the **Bachelor of Science in Data Science** program at **USTP**.
 
