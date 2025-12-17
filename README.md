@@ -1,7 +1,7 @@
 # DENVUE Dashboard  
 **Dengue Visualization & Environmental Risk Analytics**
 
-DENVUE is an interactive web dashboard designed to support **barangay-level dengue surveillance and risk assessment** in **Cagayan de Oro City, Philippines**. It transforms epidemiological and environmental data into **clear, actionable insights** for researchers, students, and local decision-makers.
+DENVUE is an interactive web dashboard designed to support **barangay-level dengue surveillance and risk assessment** in **Cagayan de Oro City, Philippines**. It transforms epidemiological data into **clear, actionable insights** for researchers, students, and local decision-makers.
 
 This dashboard serves as the visualization and analytics layer of the **DENVUE Capstone Project**, developed by BS Data Science students of the **University of Science and Technology of Southern Philippines (USTP)**.
 
@@ -22,7 +22,7 @@ The dashboard is designed to be **intuitive, responsive, and data-driven**, allo
 
 ## Key Features
 
-- Interactive Map Visualization  
+- Interactive Graph Visualization  
   View dengue risk distribution across barangays using spatial overlays and dynamic legends.
 
 - Data Analytics Panels
@@ -43,7 +43,7 @@ The dashboard is designed to be **intuitive, responsive, and data-driven**, allo
 
 The dashboard visualizes processed outputs derived from:
 
-- Dengue case records (Barangay-level, 2018–present)
+- Dengue case records (Barangay-level, 2018–2024)
 - Environmental and climate variables
 - Population and spatial boundary datasets
 - Machine learning model predictions and risk classifications
@@ -54,7 +54,7 @@ The dashboard visualizes processed outputs derived from:
 
 - Frontend: Web-based dashboard framework  
 - Backend / Analytics: Python-based data processing and machine learning  
-- Visualization: Interactive charts and geospatial mapping  
+- Visualization: Interactive charts 
 - Models: Regression and machine learning models for dengue risk assessment  
 
 ---
